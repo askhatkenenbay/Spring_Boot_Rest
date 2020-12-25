@@ -18,6 +18,7 @@ public class Dao {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+
     public List<Party> getAllParty() {
         String sql = "SELECT * FROM party;";
         return jdbcTemplate.query(sql, new PartyRowMapper());
@@ -40,6 +41,14 @@ public class Dao {
         jdbcTemplate.update(sql, party.getName(), party.getDate(), party.getVersion());
     }
 
+    /**
+     *
+     * @param serialNumber
+     * @param limit
+     * @param offset
+     * @return List of items in db where parentId is null && ownerId is not null && type = PACK,
+     * additionally can have three inputs which are appended to sql query if not null
+     */
     public List<Item> getAllItem(Integer serialNumber, Integer limit, Integer offset) {
         String sql = "SELECT @a:=@a+1 serial_number, id, parent_id, owner_id,serial,type,children_count,create_date FROM item , (SELECT @a:=0) AS a \n" +
                 "WHERE parent_id IS NULL AND owner_id IS NOT NULL AND TYPE=2 ";
@@ -75,16 +84,31 @@ public class Dao {
         jdbcTemplate.update(sql, item.getOwnerId(), item.getParentId(), item.getSerial(), item.getType().getNum(), item.getChildrenCount(), item.getCreateDate());
     }
 
+    /**
+     *
+     * @return list of all pageOpens in db
+     */
     public List<PageOpen> getAllPageOpen() {
         String sql = "SELECT * FROM pageopen;";
         return jdbcTemplate.query(sql, (rs, rowNum) -> new PageOpen(rs.getInt("id"), rs.getDate("date")));
     }
 
+    /**
+     * save new access to pageOpen
+     */
     public void saveNewPageOpen() {
         String sql = "INSERT INTO `pageopen` (`date`) VALUES (now())";
         jdbcTemplate.execute(sql);
     }
 
+    /**
+     *
+     * @param id of item
+     *           updates db calling three functions,
+     *           updateSoldItem to update id row
+     *           updateSoldItemDown for all parent items
+     *           updateSoldItemUp for all child items
+     */
     public void saleItem(int id) {
         updateSoldItem(id);
         updateSoldItemDown(id);
@@ -96,6 +120,12 @@ public class Dao {
         jdbcTemplate.update(sql, id);
     }
 
+    /**
+     *
+     * @param id of item
+     *           decreases children_count by one for all parent items
+     *           where type is ITEM
+     */
     private void updateSoldItemDown(int id) {
         String sql = "UPDATE item SET children_count = children_count - 1 WHERE type=1 AND id IN (select temp.id from (with recursive cte(id,parent_id,children_count) as \n" +
                 "(select id, parent_id,children_count from item where id = ?\n" +
@@ -107,6 +137,12 @@ public class Dao {
         jdbcTemplate.update(sql, id, id);
     }
 
+    /**
+     *
+     * @param id of item
+     *           set owner_id, parent_id to null and children_count to 0, where type is ITEM
+     *           for all children of item with given id
+     */
     private void updateSoldItemUp(int id) {
         String sql = "UPDATE item SET owner_id = NULL, parent_id = null, children_count = 0 WHERE `type`=1 AND id IN (select temp.id \n" +
                 "from (with recursive cte(id,owner_id,parent_id,children_count) as \n" +
