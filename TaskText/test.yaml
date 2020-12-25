@@ -1,0 +1,221 @@
+openapi: 3.0.0
+info:
+  version: 1.0.0
+  title: test API
+  description: "Есть некие продавцы party, они продают товары item. Товары лежат в упаковаках, упаковки в упаковках с неограниченным кол-вом вложенности. Задача: предположим разрабатывается приложение с пользовательским интерфейсом состоящим из экранов:Список продавцов, Детальная информация о продавце, Список упаковок самого верхнего уровня, Детальной информации по упаковке + некий сервис присылает информацию о продаже в endpoint /item/{id}/sale. Необходимо разработать бэкэнд для поддержки данного приложения + для каждого открытия страницы списка продавцов мы хотим зафиксировать дату и время открытия, для статистики. Только текущие дата и время по серверу. запрос будем присылать на endpoint /partyPage/open сохранять в таблицу pageopen.  Должно быть springboot приложение с подготовленным docker файлом для запуска в конейнере, парметры подключения к БД должны настраиваться через параметры docker'. Весь проект разместить в gitlab. В файле dataModel.png модель БД."
+  
+servers:
+  - url: /api/v1
+
+paths:
+  '/party':
+    get:
+      tags:
+       - Party
+      operationId: partyGet
+      responses:
+        '200':
+          description: 'список Party'
+          content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PartyDto'
+                    
+    post:
+      tags:
+       - Party
+      operationId: partyCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PartyDto'
+      responses:
+        '201':
+          description: 'создан'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PartyDto'
+  '/party/{id}':
+    get:
+      tags:
+        - Party
+      operationId: partyGetById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+    
+      responses:
+        '200':
+          description: 'Информация по Party'
+          content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/PartyDetailDto'
+  '/item':
+    get:
+      tags:
+        - item
+      operationId: itemGet
+      parameters:
+        - name: serialNumber
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 'список упаковок, возвращать только те,у которых parentId = null и type=PACK и owner!=null'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ItemDto'
+    post:
+      tags:
+        - item
+      operationId: itemCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemDto'
+      responses:
+        '201':
+          description: 'создан'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemDto'
+      
+  '/item/{id}':
+    get:
+      tags:
+        - item
+      operationId: itemGetById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: "Информация по item"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemDetailDto'
+  '/item/{id}/sale':
+    post:
+      operationId: itemSale
+      description: 'Продажа item. Означает, что необходимо в поле ownerid поставить значение null и item исключается из всех вышестояших item - parent_id. Продавать можно только item.type=item. После продажи необходимо проверить если этот Item был последний в агрегации вышестоящего уровня (parent, parentId). Если был последним, то необходимо для вышестоящего item проставть owner=null, parentId=null и так до самого верха иерархии. + необходимо скорректировать все childrenCount по иерархии.'
+      tags:
+        - item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '201':
+          description: 'продан'
+  '/partyPage/open':
+    get:
+      tags:
+        - partyPage
+      operationId: partyPageOpen
+      responses:
+        '200':
+          description: 'Нажатие кнопки сохранено'
+components:
+  schemas:
+    PartyDto:
+      type: object
+      required:
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: "Unique identifier of the record. Primary Key. Creating automtic after object creation"
+        name:
+          type: string
+          maxLength: 255
+          example: "test name"
+          description: "Party name"
+     
+    PartyDetailDto:
+      allOf:
+        - $ref: '#/components/schemas/PartyDto'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ItemDto' 
+          
+    ItemDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: "Unique identifier of the record. Primary Key. Creating automtic after object creation"
+        parentId: 
+          type: integer
+          format: int64
+        serialNumber:
+          type: string
+          description: "item serial number. Unique item identifier threw gtin"
+        owner:
+          $ref: '#/components/schemas/PartyDto'
+        type:
+          type: string
+          enum:
+            - PACK
+            - ITEM
+        childrenCount:
+          type: integer
+    
+    ItemDetailDto:
+      allOf:
+        - $ref: '#/components/schemas/ItemDto'
+        - type: object
+          properties:
+            children:
+              type: array
+              items:
+                $ref: '#/components/schemas/ItemDetailDto'
+        
+    
+    
+    
+
+
